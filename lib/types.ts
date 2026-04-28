@@ -10,6 +10,7 @@ export type ProductVariant =
 export type OrderUnit = 'kg' | 'pieces'
 
 export interface ShippingRate {
+  id: string
   carrier: 'flash_express' | 'kex'
   min_weight_kg: number
   max_weight_kg: number | null

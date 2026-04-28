@@ -48,7 +48,7 @@ function PriceRowForm({ v, currentPrice }: { v: Variant; currentPrice?: number }
               <span className="font-semibold text-forest">{fmt(currentPrice)} ฿/{v.unit}</span>
             </p>
           ) : (
-            <p className="mt-0.5 text-xs text-earth/60">ใช้ราคา DOAE (ไม่ได้ตั้งค่า)</p>
+            <p className="mt-0.5 text-xs text-earth/60">ใช้ราคาเริ่มต้น (ไม่ได้ตั้งค่า)</p>
           )}
         </div>
         {currentPrice !== undefined && (
@@ -56,7 +56,7 @@ function PriceRowForm({ v, currentPrice }: { v: Variant; currentPrice?: number }
             type="button"
             onClick={handleClear}
             disabled={clearing}
-            title="ลบราคา (ใช้ DOAE)"
+            title="ลบราคา (ใช้ราคาเริ่มต้น)"
             className="shrink-0 rounded-lg p-1.5 text-earth/50 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-50"
           >
             <Trash2 className="h-4 w-4" />
@@ -147,7 +147,7 @@ export default function PricesClient({ variants, currentPrices }: PricesClientPr
       </section>
 
       <p className="text-xs text-earth/60">
-        * การลบราคาจะทำให้ระบบดึงราคาจาก DOAE โดยอัตโนมัติ
+        * การลบราคาจะทำให้ระบบใช้ราคาเริ่มต้นโดยอัตโนมัติ
       </p>
     </div>
   )

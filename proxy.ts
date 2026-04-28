@@ -19,7 +19,7 @@ function timingSafeEqual(a: string, b: string): boolean {
   return result === 0
 }
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl
 
   // Allow the login page through to avoid redirect loops

@@ -29,9 +29,8 @@ const preOrderSchema = z
     email: z.string().email('รูปแบบอีเมลไม่ถูกต้อง').or(z.literal('')).optional(),
     phone: z
       .string()
-      .regex(/^[0-9+\-\s()]{7,20}$/, 'รูปแบบเบอร์โทรไม่ถูกต้อง')
-      .or(z.literal(''))
-      .optional(),
+      .min(1, 'กรุณากรอกเบอร์โทรศัพท์')
+      .regex(/^[0-9+\-\s()]{7,20}$/, 'รูปแบบเบอร์โทรไม่ถูกต้อง'),
     line_id: z.string().max(100).or(z.literal('')).optional(),
     pdpa_consent: z.literal(true, {
       errorMap: () => ({ message: 'กรุณายินยอมการเก็บข้อมูลส่วนบุคคล' }),
@@ -39,10 +38,6 @@ const preOrderSchema = z
     items: z.array(orderItemSchema).min(1, 'กรุณาเลือกสินค้าอย่างน้อย 1 รายการ'),
     shipping_fee_thb: z.number().nonnegative(),
     packaging_fee_thb: z.number().nonnegative(),
-  })
-  .refine((d) => d.email || d.phone || d.line_id, {
-    message: 'กรุณากรอกช่องทางติดต่ออย่างน้อย 1 ช่องทาง (อีเมล, เบอร์โทร, หรือ Line ID)',
-    path: ['_contact'],
   })
 
 // ─── Action state ──────────────────────────────────────────────────────────────
@@ -58,6 +53,27 @@ export async function submitPreOrder(
   _prev: PreOrderActionState,
   formData: FormData,
 ): Promise<PreOrderActionState> {
+  // ── Turnstile verification ────────────────────────────────────────────────
+  const turnstileSecret = process.env.TURNSTILE_SECRET_KEY
+  if (turnstileSecret) {
+    const token = formData.get('cf-turnstile-response') as string | null
+    if (!token) {
+      return { status: 'error', message: 'กรุณายืนยันตัวตน (CAPTCHA) ก่อนส่งคำสั่งจอง' }
+    }
+    const verifyRes = await fetch(
+      'https://challenges.cloudflare.com/turnstile/v0/siteverify',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ secret: turnstileSecret, response: token }),
+      },
+    )
+    const verifyData = (await verifyRes.json()) as { success: boolean }
+    if (!verifyData.success) {
+      return { status: 'error', message: 'การยืนยันตัวตนล้มเหลว กรุณาลองอีกครั้ง' }
+    }
+  }
+
   // Parse items JSON from hidden input
   let rawItems: unknown
   try {

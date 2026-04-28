@@ -17,7 +17,7 @@
 
   /* Typography */
   --font-sans: var(--font-sarabun), 'Sarabun', sans-serif;
-  --font-heading: var(--font-playfair), 'Playfair Display', serif;
+  --font-heading: var(--font-sarabun), 'Sarabun', sans-serif;
 }
 
 /* =========================================================

@@ -52,7 +52,7 @@ export default function AdminLoginPage({
           <h1 className="font-heading text-xl font-semibold text-forest">
             เข้าสู่ระบบแผงควบคุม
           </h1>
-          <p className="text-sm text-earth">บ้านเต้: เขียวสุวรรณ</p>
+          <p className="text-sm text-earth">เขียวสุวรรณออร์แกนิค</p>
         </div>
 
         <form action={loginAction} className="flex flex-col gap-4">

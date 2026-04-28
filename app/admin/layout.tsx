@@ -2,6 +2,7 @@ import Link from 'next/link'
 
 const NAV = [
   { href: '/admin/prices', label: 'ราคาสินค้า' },
+  { href: '/admin/shipping', label: 'ค่าขนส่ง' },
   { href: '/admin/yield', label: 'โควตาผลผลิต' },
   { href: '/admin/orders', label: 'คำสั่งจอง' },
 ]
@@ -17,7 +18,7 @@ export default function AdminLayout({
         <div className="mx-auto max-w-5xl px-6">
           <div className="flex h-14 items-center justify-between">
             <span className="font-heading text-base font-semibold text-cream">
-              บ้านเต้: เขียวสุวรรณ
+              เขียวสุวรรณออร์แกนิค
             </span>
             <nav className="flex items-center gap-1">
               {NAV.map((item) => (

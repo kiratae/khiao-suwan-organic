@@ -48,7 +48,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 const VARIANT_LABEL: Record<string, string> = {
   ready_to_eat: 'มังคุด แก่จัด',
-  ripen_3_4_days: 'มังคุด แก่อีก 3-4 วัน',
+  ripen_3_4_days: 'มังคุด รอสุกอีกนิด เก็บไว้แบ่งทาน',
   size_s: 'ทุเรียน Size S',
   size_m: 'ทุเรียน Size M',
   size_l: 'ทุเรียน Size L',

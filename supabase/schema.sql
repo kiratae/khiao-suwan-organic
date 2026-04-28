@@ -20,8 +20,8 @@ create type product_type as enum (
 );
 
 create type product_variant as enum (
-  'ready_to_eat',    -- มังคุด: แก่จัด พร้อมรับประทาน
-  'ripen_3_4_days',  -- มังคุด: แก่อีก 3-4 วัน
+  'ready_to_eat',    -- มังคุด: สุกพอดี พร้อมทาน
+  'ripen_3_4_days',  -- มังคุด: รอสุกอีกนิด เก็บไว้แบ่งทาน
   'size_s',          -- ทุเรียน: S (3-4 kg)
   'size_m',          -- ทุเรียน: M (4-5 kg)
   'size_l'           -- ทุเรียน: L (5+ kg)

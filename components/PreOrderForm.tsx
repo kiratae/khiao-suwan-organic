@@ -1,6 +1,6 @@
 'use client'
 
-import { useActionState, useMemo, useState } from 'react'
+import { useActionState, useEffect, useMemo, useState } from 'react'
 import {
   AlertTriangle,
   CheckCircle,
@@ -10,7 +10,19 @@ import {
 } from 'lucide-react'
 import { submitPreOrder, type PreOrderActionState } from '@/app/actions/pre-order'
 import { calculateShipping, DURIAN_WEIGHT_KG } from '@/lib/shipping'
+import ThaiAddressSelector, { type ThaiAddress } from '@/components/ThaiAddressSelector'
 import type { OrderItem, ProductPrice, ShippingRate, YieldQuota } from '@/lib/types'
+
+// Extend Window for Turnstile globals
+declare global {
+  interface Window {
+    turnstile?: { reset: (id?: string) => void }
+    __tsCallback?: (token: string) => void
+    __tsExpired?: () => void
+  }
+}
+
+const TURNSTILE_SITE_KEY = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY ?? ''
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -26,8 +38,8 @@ function fmt(amount: number): string {
 
 function itemLabel(item: OrderItem): string {
   const labels: Record<string, string> = {
-    'mangosteen:ready_to_eat': 'มังคุด แก่จัด พร้อมรับประทาน',
-    'mangosteen:ripen_3_4_days': 'มังคุด แก่อีก 3-4 วัน',
+    'mangosteen:ready_to_eat': 'มังคุด สุกพอดี พร้อมทาน',
+    'mangosteen:ripen_3_4_days': 'มังคุด รอสุกอีกนิด เก็บไว้แบ่งทาน',
     'durian:size_s': 'ทุเรียนหมอนทอง Size S',
     'durian:size_m': 'ทุเรียนหมอนทอง Size M',
     'durian:size_l': 'ทุเรียนหมอนทอง Size L',
@@ -75,8 +87,7 @@ interface QuantityRowProps {
   price: number
   value: string
   onChange: (v: string) => void
-  inputMode: 'decimal' | 'numeric'
-  step: string
+  step: number
 }
 
 function QuantityRow({
@@ -86,9 +97,20 @@ function QuantityRow({
   price,
   value,
   onChange,
-  inputMode,
   step,
 }: QuantityRowProps) {
+  const current = parseFloat(value) || 0
+
+  function decrement() {
+    const next = Math.max(0, parseFloat((current - step).toFixed(2)))
+    onChange(next === 0 ? '' : String(next))
+  }
+
+  function increment() {
+    const next = parseFloat((current + step).toFixed(2))
+    onChange(String(next))
+  }
+
   return (
     <div className="flex items-center justify-between gap-3 rounded-xl border border-earth/15 bg-cream px-4 py-3">
       <div className="flex-1 min-w-0">
@@ -98,17 +120,27 @@ function QuantityRow({
           {price > 0 ? `${fmt(price)} บาท/${unit}` : 'กำลังโหลดราคา...'}
         </p>
       </div>
-      <div className="flex items-center gap-2 shrink-0">
-        <input
-          type="number"
-          inputMode={inputMode}
-          min="0"
-          step={step}
-          value={value}
-          onChange={(e) => onChange(e.target.value)}
-          className="w-20 rounded-lg border border-earth/30 bg-white px-3 py-1.5 text-center text-sm text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
-          placeholder="0"
-        />
+      <div className="flex items-center gap-1 shrink-0">
+        <button
+          type="button"
+          onClick={decrement}
+          disabled={current <= 0}
+          aria-label="ลดจำนวน"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-earth/30 bg-white text-earth transition-colors hover:bg-earth/10 hover:border-earth/50 disabled:cursor-not-allowed disabled:opacity-30"
+        >
+          <span className="text-lg leading-none">&#8722;</span>
+        </button>
+        <span className="w-12 text-center text-sm font-medium text-forest tabular-nums">
+          {current > 0 ? current : <span className="text-earth/40">0</span>}
+        </span>
+        <button
+          type="button"
+          onClick={increment}
+          aria-label="เพิ่มจำนวน"
+          className="flex h-8 w-8 items-center justify-center rounded-lg border border-earth/30 bg-white text-earth transition-colors hover:bg-earth/10 hover:border-earth/50"
+        >
+          <span className="text-lg leading-none">&#43;</span>
+        </button>
         <span className="w-6 text-xs text-earth">{unit}</span>
       </div>
     </div>
@@ -120,7 +152,7 @@ function SuccessCard({ orderId }: { orderId: string }) {
     <div className="rounded-2xl border border-forest/20 bg-forest/5 p-10 text-center">
       <CheckCircle className="mx-auto mb-4 h-16 w-16 text-forest" />
       <h2 className="font-heading text-2xl font-bold text-forest">สั่งจองสำเร็จ!</h2>
-      <p className="mt-2 text-earth">ขอบคุณที่สั่งจองกับบ้านเต้: เขียวสุวรรณ</p>
+      <p className="mt-2 text-earth">ขอบคุณที่สั่งจองกับเขียวสุวรรณออร์แกนิค</p>
       <p className="mt-5 rounded-lg bg-white px-4 py-3 text-xs text-earth/70">
         หมายเลขคำสั่งจอง:{' '}
         <span className="font-mono text-forest break-all">{orderId}</span>
@@ -147,11 +179,28 @@ export default function PreOrderForm({
 }: PreOrderFormProps) {
   // ── Form field state ──
   const [fullName, setFullName] = useState('')
-  const [shippingAddress, setShippingAddress] = useState('')
+  const [fullNameTouched, setFullNameTouched] = useState(false)
+  const [houseAddress, setHouseAddress] = useState('')
+  const [thaiAddress, setThaiAddress] = useState<ThaiAddress | null>(null)
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [phoneTouched, setPhoneTouched] = useState(false)
   const [lineId, setLineId] = useState('')
   const [pdpaChecked, setPdpaChecked] = useState(false)
+
+  // Combine house + thai address into the full shipping_address string
+  const shippingAddress = useMemo(() => {
+    if (!houseAddress && !thaiAddress) return ''
+    const parts: string[] = []
+    if (houseAddress.trim()) parts.push(houseAddress.trim())
+    if (thaiAddress) {
+      parts.push(`ต.${thaiAddress.tambon}`)
+      parts.push(`อ.${thaiAddress.amphoe}`)
+      parts.push(`จ.${thaiAddress.province}`)
+      parts.push(thaiAddress.zipcode)
+    }
+    return parts.join(' ')
+  }, [houseAddress, thaiAddress])
 
   // ── Quantities ──
   const [mangoReadyKg, setMangoReadyKg] = useState('')
@@ -165,6 +214,26 @@ export default function PreOrderForm({
     submitPreOrder,
     { status: 'idle' } as PreOrderActionState,
   )
+
+  // ── Captcha ──
+  const [captchaToken, setCaptchaToken] = useState<string | null>(null)
+
+  useEffect(() => {
+    window.__tsCallback = (token: string) => setCaptchaToken(token)
+    window.__tsExpired = () => setCaptchaToken(null)
+    return () => {
+      delete window.__tsCallback
+      delete window.__tsExpired
+    }
+  }, [])
+
+  // Reset captcha widget after a failed submission
+  useEffect(() => {
+    if (actionState.status === 'error') {
+      setCaptchaToken(null)
+      window.turnstile?.reset()
+    }
+  }, [actionState])
 
   // ── Prices ──
   const priceMangoReady = getPrice(prices, 'mangosteen', 'ready_to_eat')
@@ -257,11 +326,18 @@ export default function PreOrderForm({
               type="text"
               value={fullName}
               onChange={(e) => setFullName(e.target.value)}
-              required
+              onBlur={() => setFullNameTouched(true)}
               autoComplete="name"
-              className="mt-1.5 w-full rounded-lg border border-earth/30 bg-cream px-4 py-2.5 text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
+              className={`mt-1.5 w-full rounded-lg border bg-cream px-4 py-2.5 text-forest outline-none focus:ring-2 focus:ring-forest/20 ${
+                (fullNameTouched && !fullName.trim()) || fieldErrors?.['full_name']
+                  ? 'border-red-400 focus:border-red-400'
+                  : 'border-earth/30 focus:border-forest'
+              }`}
               placeholder="เช่น สมชาย ใจดี"
             />
+            {fullNameTouched && !fullName.trim() && !fieldErrors?.['full_name'] && (
+              <p className="mt-1 text-sm text-red-600">กรุณากรอกชื่อ-นามสกุล</p>
+            )}
             <FieldError errors={fieldErrors} field="full_name" />
           </div>
 
@@ -270,30 +346,69 @@ export default function PreOrderForm({
             <label className="block text-sm font-medium text-forest">
               ที่อยู่จัดส่ง <span className="text-red-500">*</span>
             </label>
-            <textarea
-              name="shipping_address"
-              value={shippingAddress}
-              onChange={(e) => setShippingAddress(e.target.value)}
-              required
-              rows={3}
-              className="mt-1.5 w-full resize-none rounded-lg border border-earth/30 bg-cream px-4 py-2.5 text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
-              placeholder="บ้านเลขที่ / หมู่ / ถนน / ตำบล / อำเภอ / จังหวัด / รหัสไปรษณีย์"
+
+            {/* House / street detail */}
+            <input
+              type="text"
+              value={houseAddress}
+              onChange={(e) => setHouseAddress(e.target.value)}
+              className="mt-1.5 w-full rounded-lg border border-earth/30 bg-cream px-4 py-2.5 text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
+              placeholder="บ้านเลขที่ / หมู่บ้าน / ถนน"
             />
+
+            {/* Province / district / subdistrict / zipcode selector */}
+            <div className="mt-2">
+              <ThaiAddressSelector value={thaiAddress} onChange={setThaiAddress} />
+            </div>
+
+            {/* Full address preview */}
+            {shippingAddress && (
+              <p className="mt-2 text-xs text-earth/60">
+                ที่อยู่เต็ม: {shippingAddress}
+              </p>
+            )}
+
+            {/* Hidden input carries the combined string to the Server Action */}
+            <input type="hidden" name="shipping_address" value={shippingAddress} />
+
             <FieldError errors={fieldErrors} field="shipping_address" />
           </div>
 
           {/* Contact channels */}
           <div>
             <p className="text-sm font-medium text-forest">
-              ช่องทางติดต่อ{' '}
-              <span className="text-earth font-normal">(กรุณากรอกอย่างน้อย 1 ช่องทาง)</span>
+              ช่องทางติดต่อ
             </p>
-            {fieldErrors?.['_contact'] && (
-              <p className="mt-1 text-sm text-red-600">{fieldErrors['_contact'][0]}</p>
-            )}
             <div className="mt-3 flex flex-col gap-3">
+              {/* Phone — mandatory */}
               <div>
-                <label className="block text-xs font-medium text-earth">อีเมล</label>
+                <label className="block text-xs font-medium text-earth">
+                  เบอร์โทรศัพท์ <span className="text-red-500">*</span>
+                </label>
+                <input
+                  name="phone"
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                  onBlur={() => setPhoneTouched(true)}
+                  autoComplete="tel"
+                  className={`mt-1 w-full rounded-lg border bg-cream px-4 py-2.5 text-sm text-forest outline-none focus:ring-2 focus:ring-forest/20 ${
+                    (phoneTouched && !phone.trim()) || fieldErrors?.['phone']
+                      ? 'border-red-400 focus:border-red-400'
+                      : 'border-earth/30 focus:border-forest'
+                  }`}
+                  placeholder="08X-XXX-XXXX"
+                />
+                {phoneTouched && !phone.trim() && !fieldErrors?.['phone'] && (
+                  <p className="mt-1 text-sm text-red-600">กรุณากรอกเบอร์โทรศัพท์</p>
+                )}
+                <FieldError errors={fieldErrors} field="phone" />
+              </div>
+              {/* Optional: Email */}
+              <div>
+                <label className="block text-xs font-medium text-earth">
+                  อีเมล <span className="font-normal text-earth/50">(ไม่บังคับ)</span>
+                </label>
                 <input
                   name="email"
                   type="email"
@@ -304,31 +419,6 @@ export default function PreOrderForm({
                   placeholder="example@email.com"
                 />
                 <FieldError errors={fieldErrors} field="email" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-earth">เบอร์โทรศัพท์</label>
-                <input
-                  name="phone"
-                  type="tel"
-                  value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
-                  autoComplete="tel"
-                  className="mt-1 w-full rounded-lg border border-earth/30 bg-cream px-4 py-2.5 text-sm text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
-                  placeholder="08X-XXX-XXXX"
-                />
-                <FieldError errors={fieldErrors} field="phone" />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-earth">Line ID</label>
-                <input
-                  name="line_id"
-                  type="text"
-                  value={lineId}
-                  onChange={(e) => setLineId(e.target.value)}
-                  className="mt-1 w-full rounded-lg border border-earth/30 bg-cream px-4 py-2.5 text-sm text-forest outline-none focus:border-forest focus:ring-2 focus:ring-forest/20"
-                  placeholder="@lineid"
-                />
-                <FieldError errors={fieldErrors} field="line_id" />
               </div>
             </div>
           </div>
@@ -357,22 +447,20 @@ export default function PreOrderForm({
           </div>
           <div className="flex flex-col gap-2.5">
             <QuantityRow
-              label="แก่จัด พร้อมรับประทาน"
+              label="สุกพอดี พร้อมทาน"
               unit="kg"
               price={priceMangoReady}
               value={mangoReadyKg}
               onChange={setMangoReadyKg}
-              inputMode="decimal"
-              step="0.5"
+              step={0.5}
             />
             <QuantityRow
-              label="แก่อีก 3-4 วัน"
+              label="รอสุกอีกนิด เก็บไว้แบ่งทาน"
               unit="kg"
               price={priceMangoRipen}
               value={mangoRipenKg}
               onChange={setMangoRipenKg}
-              inputMode="decimal"
-              step="0.5"
+              step={0.5}
             />
           </div>
         </div>
@@ -401,8 +489,7 @@ export default function PreOrderForm({
               price={priceDurianS}
               value={durianS}
               onChange={setDurianS}
-              inputMode="numeric"
-              step="1"
+              step={1}
             />
             <QuantityRow
               label="Size M"
@@ -411,8 +498,7 @@ export default function PreOrderForm({
               price={priceDurianM}
               value={durianM}
               onChange={setDurianM}
-              inputMode="numeric"
-              step="1"
+              step={1}
             />
             <QuantityRow
               label="Size L"
@@ -421,8 +507,7 @@ export default function PreOrderForm({
               price={priceDurianL}
               value={durianL}
               onChange={setDurianL}
-              inputMode="numeric"
-              step="1"
+              step={1}
             />
           </div>
         </div>
@@ -495,10 +580,10 @@ export default function PreOrderForm({
             type="checkbox"
             checked={pdpaChecked}
             onChange={(e) => setPdpaChecked(e.target.checked)}
-            className="mt-0.5 h-4 w-4 shrink-0 rounded accent-[#2D5016]"
+            className="mt-0.5 h-4 w-4 shrink-0 rounded accent-forest"
           />
           <span className="text-sm leading-relaxed text-earth">
-            ข้าพเจ้ายินยอมให้ <strong className="text-forest">บ้านเต้: เขียวสุวรรณ</strong>{' '}
+            ข้าพเจ้ายินยอมให้ <strong className="text-forest">เขียวสุวรรณออร์แกนิค</strong>{' '}
             เก็บรวบรวมและใช้ข้อมูลส่วนบุคคล ได้แก่ ชื่อ ที่อยู่ และข้อมูลติดต่อ
             เพื่อวัตถุประสงค์ในการจัดส่งสินค้าและการติดต่อเกี่ยวกับคำสั่งจองเท่านั้น
             ตามพระราชบัญญัติคุ้มครองข้อมูลส่วนบุคคล (PDPA) พ.ศ. 2562{' '}
@@ -514,10 +599,23 @@ export default function PreOrderForm({
       <input type="hidden" name="packaging_fee_thb" value={shipping.packagingFee} />
       <input type="hidden" name="pdpa_consent" value={String(pdpaChecked)} />
 
-      {/* ── Submit ──────────────────────────────────────────────── */}
+      {/* ── Captcha ──────────────────────────────────────────── */}
+      {TURNSTILE_SITE_KEY && (
+        <div className="flex justify-center">
+          <div
+            className="cf-turnstile"
+            data-sitekey={TURNSTILE_SITE_KEY}
+            data-callback="__tsCallback"
+            data-expired-callback="__tsExpired"
+            data-theme="light"
+          />
+        </div>
+      )}
+
+      {/* ── Submit ───────────────────────────────────────────── */}
       <button
         type="submit"
-        disabled={isPending || !pdpaChecked}
+        disabled={isPending || !pdpaChecked || (!!TURNSTILE_SITE_KEY && !captchaToken)}
         className="w-full rounded-2xl bg-forest px-6 py-4 font-heading text-lg font-semibold text-cream shadow-md transition-all hover:bg-forest-light disabled:cursor-not-allowed disabled:opacity-50 active:scale-[0.98]"
       >
         {isPending ? 'กำลังบันทึก...' : 'สั่งจองเลย →'}
