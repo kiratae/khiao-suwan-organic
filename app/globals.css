@@ -1,0 +1,30 @@
+@import "tailwindcss";
+
+/* =========================================================
+   Baan Tae: Khiao Suwan — Design Tokens
+   Earthy, premium-organic palette
+   ========================================================= */
+@theme {
+  /* Brand colours */
+  --color-forest:     #2D5016;
+  --color-forest-light: #3D6B20;
+  --color-earth:      #8B6914;
+  --color-earth-light: #A07C1C;
+  --color-cream:      #F5F0E8;
+  --color-cream-dark: #EDE5D4;
+  --color-terracotta: #C17D4A;
+  --color-terracotta-light: #D4936A;
+
+  /* Typography */
+  --font-sans: var(--font-sarabun), 'Sarabun', sans-serif;
+  --font-heading: var(--font-playfair), 'Playfair Display', serif;
+}
+
+/* =========================================================
+   Base styles
+   ========================================================= */
+body {
+  background-color: var(--color-cream);
+  color: var(--color-forest);
+  font-family: var(--font-sans);
+}
